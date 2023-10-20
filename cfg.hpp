@@ -264,6 +264,60 @@ CFG EliminateEpsilonProductions(CFG& cfg) {
     // Step 1:: Find all of the Non-Terminals product ε.
     std::set<char>nullableSet;
 
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& [non_terminal, rhs_list] : cfg.productions) {
+            for (const auto& rhs : rhs_list) {
+                if (std::all_of(rhs.begin(), rhs.end(), [&](char c) {
+                    // Indirect products || Direct products
+                    return nullableSet.count(c) > 0 || c == '@';
+                    })) {
+                    if (nullableSet.insert(non_terminal).second) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 2: Add new productions
+    for (const auto& [non_terminal, rhs_list] : cfg.productions) {
+        // for each production
+        std::set<std::string> generate_rhs_list = std::set<std::string>(rhs_list.begin(), rhs_list.end());
+
+        // we hold a new copy for a specific non_terminal's rhs_list to dynamic insert it.
+        for (const auto& rhs : generate_rhs_list) {
+            //for each production's right-hand side <string>
+            bool changed = true;
+            while (changed) {
+                changed = false;
+
+                for (char nullable_non_terminal : nullableSet) {
+                    if (rhs.find(nullable_non_terminal) != std::string::npos) {
+                        //In the rhs, we find a nullable-non-terminal
+                        //then we erase it.
+                        std::string new_rhs = rhs;
+                        new_rhs.erase(std::remove(new_rhs.begin(), new_rhs.end(), nullable_non_terminal), new_rhs.end());
+                        changed = true;
+                        if (!new_rhs.empty()) {
+                            generate_rhs_list.insert(new_rhs);
+                        }
+                    }
+                }
+            }
+        }
+        cfg.productions[non_terminal] = std::vector<std::string>(generate_rhs_list.begin(), generate_rhs_list.end());
+    }
+
+    // Step 3: Remove pure epsilon productions
+    for (const auto& non_terminal : cfg.non_terminals) {
+        auto& rhs_list = cfg.productions[non_terminal];
+        rhs_list.erase(remove(rhs_list.begin(), rhs_list.end(), "@"), rhs_list.end());
+        if (non_terminal == cfg.start_symbol && nullableSet.count(non_terminal) > 0) {
+            rhs_list.push_back("@");
+        }
+    }
 
 
     return cfg;
