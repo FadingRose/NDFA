@@ -8,6 +8,8 @@
 #include <cctype>
 #include <algorithm>
 #include <unordered_set>
+#include <queue>
+#include <tuple>
 
 struct CFG {
     std::set<char> non_terminals;
@@ -72,17 +74,40 @@ CFG Read_CFG_File(const std::string& filename) {
 }
 
 void Output_CFG_Struct(const CFG& cfg) {
-    for (const auto& production : cfg.productions) {
-        std::cout << production.first << " -> ";
-        for (size_t i = 0; i < production.second.size(); ++i) {
-            std::cout << production.second[i];
-            if (i < production.second.size() - 1) {
-                std::cout << " | ";
+    std::ofstream outfile("File 2.txt");
+
+    // Output the production of the start symbol first
+    auto start_symbol_iter = cfg.productions.find(cfg.start_symbol);
+    if (start_symbol_iter != cfg.productions.end()) {
+        outfile << start_symbol_iter->first << " -> ";
+        for (size_t i = 0; i < start_symbol_iter->second.size(); ++i) {
+            outfile << start_symbol_iter->second[i];
+            if (i < start_symbol_iter->second.size() - 1) {
+                outfile << " | ";
             }
         }
-        std::cout << std::endl;
+        outfile << std::endl;
     }
+
+    // Output the rest of the productions
+    for (const auto& production : cfg.productions) {
+        if (production.first == cfg.start_symbol) {
+            // Skip the start symbol as it has already been processed
+            continue;
+        }
+        outfile << production.first << " -> ";
+        for (size_t i = 0; i < production.second.size(); ++i) {
+            outfile << production.second[i];
+            if (i < production.second.size() - 1) {
+                outfile << " | ";
+            }
+        }
+        outfile << std::endl;
+    }
+
+    outfile.close();
 }
+
 
 // In this example, we suppose that all of the Non-Terminal is upper-case.
 bool isNonterminal(const char& c) {
@@ -93,7 +118,7 @@ bool isNonterminal(const char& c) {
     return false;
 }
 
-// Eliminate Unreachable Non-terminal and Non-terminating Symbols
+// B.1 Eliminate Unreachable Non-terminal and Non-terminating Symbols
 CFG EliminateUselessSymbols(CFG& cfg) {
     // Step 1 : Eliminate Unreachable Non-terminal Symbols
     std::set<char> reachable = { cfg.start_symbol };
@@ -121,6 +146,7 @@ CFG EliminateUselessSymbols(CFG& cfg) {
     // For a specific Production P*, if the left-hand is UNREACHABLE, then we can erase the P*.
     for (auto it = cfg.productions.begin(); it != cfg.productions.end();) {
         if (reachable.find(it->first) == reachable.end()) {
+            cfg.non_terminals.erase(it->first);
             it = cfg.productions.erase(it);
         }
         else {
@@ -152,8 +178,33 @@ CFG EliminateUselessSymbols(CFG& cfg) {
 
     // Remove Non-Terminating Symbols from Productions amd Non-Terminals
     for (auto it = cfg.productions.begin();it != cfg.productions.end();) {
-        // For a specific production, the lhs symbol can't conclude Terminal, remove it.
+
+        // check the RHS, any part of RHS which includes Non-Terminating Symbols should be removed
+        for (auto rhs_it = it->second.begin(); rhs_it != it->second.end();) {
+
+            auto includes_non_terminating = [&](auto this_string) {// whether a RHS includes non_terminating
+                for (char ch : this_string) {
+                    if (isNonterminal(ch) && terminating.find(ch) == terminating.end()) {
+                        return true;
+                    }
+                }
+                return false;
+                };
+
+            if (includes_non_terminating(*rhs_it)) {
+                rhs_it = it->second.erase(rhs_it);
+            }
+            else {
+                ++rhs_it;
+            }
+
+
+        }
+
+
+        // For a specific production, the LHS symbol can't conclude Terminal, remove it.
         if (terminating.find(it->first) == terminating.end()) {
+            cfg.non_terminals.erase(it->first);
             it = cfg.productions.erase(it);
         }
         else {
@@ -166,7 +217,7 @@ CFG EliminateUselessSymbols(CFG& cfg) {
 }
 
 
-// Eliminate all the Single Production A->B
+// B.2 Eliminate all the Single Production A->B
 // A -> B
 // B -> abc
 //----eliminate-----
@@ -246,9 +297,8 @@ CFG EliminateSingleProduction(CFG& cfg) {
     return cfg;
 }
 
-
-
-// Eliminating epsilon productions
+// B.3 Eliminating epsilon productions
+//
 // Step 1:: Find all of the Non-Terminals product ε.
 // Step 2:: For each A->α, if α includes some Non-Terminals which can conclude ε, then add some external productions, and these Non-Terminals will be deleted.
 // Step 3:: Deleting all the pure A->ε production, exclude S->ε
@@ -284,30 +334,35 @@ CFG EliminateEpsilonProductions(CFG& cfg) {
     // Step 2: Add new productions
     for (const auto& [non_terminal, rhs_list] : cfg.productions) {
         // for each production
-        std::set<std::string> generate_rhs_list = std::set<std::string>(rhs_list.begin(), rhs_list.end());
-
+        std::vector<std::string> generated_all_rhs;
         // we hold a new copy for a specific non_terminal's rhs_list to dynamic insert it.
-        for (const auto& rhs : generate_rhs_list) {
-            //for each production's right-hand side <string>
-            bool changed = true;
-            while (changed) {
-                changed = false;
+        for (const auto& rhs : rhs_list) {
+            //for each production's right-hand-side's each part
+            std::queue<std::string> bfsQueue;
+            std::set<std::string> generated_rhs;//A specific rhs may generate more rhs strings
+            generated_rhs.insert(rhs);
+            bfsQueue.push(rhs);
+
+            while (!bfsQueue.empty()) {
+                std::string this_rhs = bfsQueue.front();
+                bfsQueue.pop();
 
                 for (char nullable_non_terminal : nullableSet) {
-                    if (rhs.find(nullable_non_terminal) != std::string::npos) {
-                        //In the rhs, we find a nullable-non-terminal
-                        //then we erase it.
-                        std::string new_rhs = rhs;
-                        new_rhs.erase(std::remove(new_rhs.begin(), new_rhs.end(), nullable_non_terminal), new_rhs.end());
-                        changed = true;
-                        if (!new_rhs.empty()) {
-                            generate_rhs_list.insert(new_rhs);
-                        }
+                    std::string new_rhs = this_rhs;
+                    new_rhs.erase(std::remove(new_rhs.begin(), new_rhs.end(), nullable_non_terminal), new_rhs.end());
+                    if (!new_rhs.empty() && generated_rhs.find(new_rhs) == generated_rhs.end()) {
+                        bfsQueue.push(new_rhs);
+                        generated_rhs.insert(new_rhs);
                     }
                 }
             }
+            // update the specific production
+            for (auto& _ : generated_rhs) {
+                generated_all_rhs.push_back(_);
+            }
         }
-        cfg.productions[non_terminal] = std::vector<std::string>(generate_rhs_list.begin(), generate_rhs_list.end());
+
+        cfg.productions[non_terminal] = generated_all_rhs;
     }
 
     // Step 3: Remove pure epsilon productions
@@ -319,6 +374,121 @@ CFG EliminateEpsilonProductions(CFG& cfg) {
         }
     }
 
+
+    return cfg;
+}
+
+
+
+// B.4 Eliminate Left-Recursion Part-1
+// Step 1:: Eliminate Indirect Recursion
+//     1.1 sort(Non-Terminals)
+//     1.2 foreach Non-Terminal A_i,
+//         iterate A_j (j<i)
+//         replace A_j in A_i -> A_jα by rhs of A_j
+CFG EliminateIndirectLeftRecursion(CFG& cfg) {
+    std::map<char, int> nonTerminalSortMap;
+    int cnt = 0;
+    for (const auto& _ : cfg.non_terminals) {
+        nonTerminalSortMap[_] = cnt;
+        ++cnt;
+    }
+
+    for (const auto& [nonterminal, production] : cfg.productions) {
+        //select a production
+        std::set<std::string>new_rhs_list;
+
+        for (const auto& rhs : production) {
+            //select a specific rhs
+            if (isNonterminal(rhs[0]) && nonTerminalSortMap[rhs[0]] < nonTerminalSortMap[nonterminal]) {
+                //         replace A_j in A_i -> A_jα by rhs of A_j
+                char rhs_non_terminal = rhs[0];// this is A_j
+
+                // Now we need all of the A_j -> <rhs1> | <rhs2> | ...
+                for (const auto& _ : cfg.productions[rhs_non_terminal]) {
+                    new_rhs_list.insert(_ + rhs.substr(1));
+                }
+            }
+            else {
+                new_rhs_list.insert(rhs);
+            }
+        }
+
+        cfg.productions[nonterminal] = std::vector<std::string>(new_rhs_list.begin(), new_rhs_list.end());
+    }
+
+    return cfg;
+}
+
+// B.4 Eliminate Left-Recursion Part-2
+//      A -> Aα∣β
+//      --------
+//      A -> βA'
+//      A' -> αA' ∣ ε
+CFG EliminateDirectLeftRecursion(CFG& cfg) {
+
+    auto isLeftRecursion = [&](const char& non_terminal, const std::string& rhs) -> std::tuple<bool, std::string> {
+        if (non_terminal == rhs[0]) {
+            return { true,rhs.substr(1) }; //return α
+        }
+        else {
+            return { false, rhs }; // return β
+        }
+        };
+
+    auto generateNewNonTerminal = [&](const std::set<char>& non_terminal_set) -> std::tuple<bool, char> {
+        for (char ch = 'A'; ch <= 'Z'; ++ch) {
+            if (non_terminal_set.find(ch) == non_terminal_set.end()) {
+                return { true, ch };
+            }
+        }
+        return { false, '\0' };
+        };
+
+
+    for (const auto& [non_terminal, rhs_list] : cfg.productions) {
+        //foreach production
+
+        std::vector<std::string> alpha_list, beta_list;
+        std::set<std::string> new_alpha_list, new_beta_list;
+        char new_non_terminal = '\0';
+
+        for (const auto& rhs : rhs_list) {
+            auto [is_left_recursion, _] = isLeftRecursion(non_terminal, rhs);
+            // update alpha_list | beta_list
+            is_left_recursion ? alpha_list.push_back(_) : beta_list.push_back(_);
+        }
+
+        // in this case, the production is a Single-Production, ignore it in this func.
+        if (alpha_list.empty()) {
+            cfg.productions[non_terminal] = rhs_list;
+            continue;
+        }
+
+        // if we can reach here, means there must is at least a Left-Recursion occurs.
+        auto [suc, _] = generateNewNonTerminal(cfg.non_terminals);
+        if (!suc) {
+            throw std::runtime_error("All non-terminal symbols are used, cannot generate a new one.");
+        }
+        //update a new non-terminal
+        new_non_terminal = _;
+        cfg.non_terminals.insert(new_non_terminal);
+
+        //construct RHS part of A -> αA' ∣ ε
+        for (const auto& alpha : alpha_list) {
+            new_alpha_list.insert(alpha + std::string(1, new_non_terminal));
+        }
+        new_alpha_list.insert("@");
+
+        // construct RHS part of  A -> βA'
+        for (const auto& beta : beta_list) {
+            new_beta_list.insert(beta + std::string(1, new_non_terminal));
+        }
+
+        // update this production
+        cfg.productions[non_terminal] = std::vector<std::string>(new_beta_list.begin(), new_beta_list.end());//A -> βA'
+        cfg.productions[new_non_terminal] = std::vector<std::string>(new_alpha_list.begin(), new_alpha_list.end());//A' -> αA' ∣ ε
+    }
 
     return cfg;
 }

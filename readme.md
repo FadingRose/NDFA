@@ -36,7 +36,7 @@ struct CFG {
     std::set<char> terminals;
     std::map<char, std::vector<std::string>> productions;
     char start_symbol;
-    char epsilon_symbol = 'ε';
+    char epsilon_symbol = '@';
 };
 ```
 
@@ -115,3 +115,91 @@ A -> a
 
 - 读取File3.txt中的输入字符串。
 - 使用NFDA进行模拟，以确定是否可以接受该字符串。
+
+
+## D 测试样例
+
+### D.1 消除无用符号
+
+#### D.1.a 全部符号都是有用的
+
+```plain text
+S -> A
+A -> a
+```
+
+#### D.1.b 有无用符号
+
+```plain text
+S -> A | B | D
+A -> a
+B -> b
+C -> c
+D -> E
+```
+
+### D.2 消除单一表达式
+
+#### D.2.a 没有单一表达式
+
+```plain text
+S -> Aa | Bb
+A -> a
+B -> b
+```
+
+#### D.2.b 含有单一表达式
+
+```plain text
+S -> A
+A -> B
+B -> a
+```
+
+### D.3 消除空表达式
+
+#### D.3.a 没有空表达式
+
+```plain text
+S -> a | b
+```
+
+#### D.3.a 含有空表达式
+
+```plain text
+S -> A | @
+A -> a | @
+```
+
+### D.4 消除直接左递归
+
+#### D.4.a 没有直接左递归
+
+```plain text
+S -> Aa | Bb
+A -> a
+B -> b
+```
+
+#### D.4.b 含有直接左递归
+
+```plain text
+S -> Sa | Sb | ε
+```
+
+### D.5 消除间接左递归
+
+#### D.5.a 没有间接左递归
+
+```plain text
+S -> Aa | Bb
+A -> a
+B -> b
+```
+
+#### D.5.b 含有间接左递归
+
+```plain text
+S -> Aa
+A -> Sb | a
+```

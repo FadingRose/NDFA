@@ -1,7 +1,2 @@
-S -> AB
-A -> aAC | a | D
-B -> bB | b
-C -> aA
-D -> E | F
-E -> e
-F -> @
+S -> Aa
+A -> Sb | a
