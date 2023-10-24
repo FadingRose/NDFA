@@ -203,3 +203,9 @@ B -> b
 S -> Aa
 A -> Sb | a
 ```
+
+
+S -> aAbBC | abBC
+A -> bcB | Cca | a | aA
+B -> bcB | Cca
+C -> cC | c

@@ -492,3 +492,71 @@ CFG EliminateDirectLeftRecursion(CFG& cfg) {
 
     return cfg;
 }
+
+
+// B.5 Transit it to Gribach Standard Form
+// such as
+// A -> Cca
+// C -> cC
+// all the rhs cannot start with non-terminal
+CFG EliminateSingleLikeProduction(CFG& cfg) {
+
+    bool flag = true;
+
+    while (flag) {
+        flag = false;
+        std::set<char> lhs_invalid_set;
+
+        for (auto& [non_terminal, rhs_list] : cfg.productions) {
+            //foreach production
+
+            for (auto& rhs : rhs_list) {
+                //foreach part of rhs_list
+                //check is there any rhs start with non-terminal
+                if (isNonterminal(rhs[0])) {
+                    // We must replace the Non-Terminal by its rhs_list
+                    flag = true;
+                    lhs_invalid_set.insert(non_terminal);
+                }
+            }
+        }
+
+        if (!flag) break;// if all productions are valid, break
+
+        // if reach here, there are some productions are invalid
+        for (auto& lhs_invalid : lhs_invalid_set) {
+            std::vector<std::string> new_rhs_list;
+            auto& invalid_rhs_list = cfg.productions[lhs_invalid];
+
+            for (auto& rhs : invalid_rhs_list) {
+
+                if (!isNonterminal(rhs[0])) {
+                    // valid rhs part, pass
+                    new_rhs_list.push_back(rhs);
+                }
+                else {
+                    // invalid rhs part, handle it
+                    // A -> Cca
+                    // C -> cC | c
+                    // rhs="Cca", rhs[0]='C'
+                    // next_rhs_list = ["cC", "c"]
+                    auto& next_rhs_list = cfg.productions[rhs[0]];
+                    for (auto& _ : next_rhs_list) {
+                        // constructed_string = "cCca" | "cca"
+                        std::string constructed_string = _ + rhs.substr(1);
+
+                        // A -> cCca | cca
+                        new_rhs_list.push_back(constructed_string);
+                    }
+                }
+            }
+
+            cfg.productions[lhs_invalid] = new_rhs_list;
+
+        }
+
+    }
+
+    return cfg;
+
+}
